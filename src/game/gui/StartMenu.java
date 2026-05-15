@@ -19,6 +19,7 @@ import javafx.scene.shape.Circle;
 import javafx.scene.shape.Rectangle;
 import javafx.scene.text.Font;
 import javafx.scene.text.FontWeight;
+import javafx.scene.input.KeyCombination;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
 import javafx.stage.StageStyle;
@@ -61,10 +62,17 @@ public class StartMenu {
 
         showModeSelection();
 
-        scene = new Scene(rootContainer, 1400, 850);
+        scene = app.getWindow().getScene();
+        if (scene == null) {
+            scene = new Scene(rootContainer, 1400, 850);
+        } else {
+            scene.setRoot(rootContainer);
+            scene.setOnKeyPressed(null); 
+        }
         
         Platform.runLater(() -> {
             app.getWindow().setFullScreenExitHint(""); 
+            app.getWindow().setFullScreenExitKeyCombination(KeyCombination.NO_MATCH); 
             app.getWindow().setFullScreen(true);
 
             try {
@@ -108,7 +116,7 @@ public class StartMenu {
     private void showModeSelection() {
         uiContainer.getChildren().clear();
 
-        VBox layout = new VBox(30);
+        VBox layout = new VBox(25);
         layout.setAlignment(Pos.CENTER);
 
         Label title = new Label("MONSTERS UNIVERSITY");
@@ -138,7 +146,7 @@ public class StartMenu {
         buttonsBox.getChildren().addAll(vsComputerBtn, vsPlayerBtn);
         
         Button howToPlayBtn = new Button("HOW TO PLAY");
-        howToPlayBtn.setPrefSize(300, 50);
+        howToPlayBtn.setPrefSize(300, 45);
         howToPlayBtn.setStyle("-fx-background-color: transparent; -fx-border-color: #f1c40f; -fx-border-width: 3px; -fx-text-fill: #f1c40f; -fx-font-weight: bold; -fx-font-size: 18px; -fx-border-radius: 10; -fx-background-radius: 10;");
         
         howToPlayBtn.setOnMouseEntered(e -> {
@@ -149,11 +157,24 @@ public class StartMenu {
         });
         howToPlayBtn.setOnAction(e -> showHowToPlayDossier());
 
-        layout.getChildren().addAll(title, subtitle, buttonsBox, howToPlayBtn);
+        Button exitGameBtn = new Button("EXIT GAME");
+        exitGameBtn.setPrefSize(300, 45);
+        exitGameBtn.setStyle("-fx-background-color: transparent; -fx-border-color: #e74c3c; -fx-border-width: 3px; -fx-text-fill: #e74c3c; -fx-font-weight: bold; -fx-font-size: 18px; -fx-border-radius: 10; -fx-background-radius: 10;");
         
-        title.setOpacity(0); subtitle.setOpacity(0); buttonsBox.setOpacity(0); howToPlayBtn.setOpacity(0);
+        exitGameBtn.setOnMouseEntered(e -> {
+            exitGameBtn.setStyle("-fx-background-color: #e74c3c; -fx-text-fill: white; -fx-font-weight: bold; -fx-font-size: 18px; -fx-border-radius: 10; -fx-background-radius: 10;");
+        });
+        exitGameBtn.setOnMouseExited(e -> {
+            exitGameBtn.setStyle("-fx-background-color: transparent; -fx-border-color: #e74c3c; -fx-border-width: 3px; -fx-text-fill: #e74c3c; -fx-font-weight: bold; -fx-font-size: 18px; -fx-border-radius: 10; -fx-background-radius: 10;");
+        });
+        exitGameBtn.setOnAction(e -> Platform.exit());
+
+        layout.getChildren().addAll(title, subtitle, buttonsBox, howToPlayBtn, exitGameBtn);
+        
+        title.setOpacity(0); subtitle.setOpacity(0); buttonsBox.setOpacity(0); howToPlayBtn.setOpacity(0); exitGameBtn.setOpacity(0);
         buttonsBox.setTranslateY(50); 
         howToPlayBtn.setTranslateY(30);
+        exitGameBtn.setTranslateY(30);
 
         FadeTransition ftTitle = new FadeTransition(Duration.seconds(1.5), title);
         ftTitle.setToValue(1);
@@ -173,8 +194,13 @@ public class StartMenu {
         TranslateTransition ttHowTo = new TranslateTransition(Duration.seconds(1), howToPlayBtn);
         ttHowTo.setToY(0);
 
+        FadeTransition ftExit = new FadeTransition(Duration.seconds(1), exitGameBtn);
+        ftExit.setToValue(1);
+        TranslateTransition ttExit = new TranslateTransition(Duration.seconds(1), exitGameBtn);
+        ttExit.setToY(0);
+
         ParallelTransition intro = new ParallelTransition(ftTitle, stTitle, ftSub);
-        intro.setOnFinished(e -> new ParallelTransition(ftBtn, ttBtn, ftHowTo, ttHowTo).play());
+        intro.setOnFinished(e -> new ParallelTransition(ftBtn, ttBtn, ftHowTo, ttHowTo, ftExit, ttExit).play());
         intro.play();
         
         uiContainer.getChildren().add(layout);
@@ -200,26 +226,26 @@ public class StartMenu {
         rulesContent.setAlignment(Pos.TOP_LEFT);
         rulesContent.setPadding(new Insets(10, 20, 10, 10)); 
         
-        rulesContent.getChildren().add(createRuleSection("🎯 1. THE OBJECTIVE", 
-        	 "The game is a race on a 100-cell board (0 to 99). To WIN the match, your monster must reach the final cell (99) AND have at least 1000 Energy! Manage your resources carefully."));
+        rulesContent.getChildren().add(createRuleSection("1. THE OBJECTIVE", 
+             "The game is a race on a 100-cell board (0 to 99). To WIN the match, your monster must reach the final cell (99) AND have at least 1000 Energy! Manage your resources carefully."));
         
-        rulesContent.getChildren().add(createRuleSection("🎲 2. MOVEMENT & COLLISION", 
+        rulesContent.getChildren().add(createRuleSection("2. MOVEMENT & COLLISION", 
             "Roll the dice to advance. Be careful! If you land exactly on the same cell as your opponent, it's an 'Invalid Move' and you will forfeit your turn."));
             
-        rulesContent.getChildren().add(createRuleSection("🚪 3. DOORS & ENERGY", 
+        rulesContent.getChildren().add(createRuleSection("3. DOORS & ENERGY", 
             "Landing on a Door Cell grants you Energy IF its role matches yours (SCARER or LAUGHER). If it mismatches, you LOSE that amount of energy! Doors deactivate after one use."));
             
-        rulesContent.getChildren().add(createRuleSection("🔮 4. SPECIAL CELLS", 
-            "• Conveyor Belts (🪜): Instantly pushes you forward multiple steps.\n" +
-            "• Contamination Socks (🧦): Pushes you backward!\n" +
-            "• Card Cells (🃏): Draw a random card (Swap positions, Start Over, Gain/Lose Energy, etc.)."));
+        rulesContent.getChildren().add(createRuleSection("4. SPECIAL CELLS", 
+            "- Conveyor Belts: Instantly pushes you forward multiple steps.\n" +
+            "- Contamination Socks: Pushes you backward!\n" +
+            "- Card Cells: Draw a random card (Swap positions, Start Over, Gain/Lose Energy, etc.)."));
 
-        rulesContent.getChildren().add(createRuleSection("⚠️ 5. STATUS EFFECTS", 
-            "• Frozen: You will skip your next turn.\n" +
-            "• Confused: Your role (SCARER/LAUGHER) is swapped temporarily!\n" +
-            "• Shielded: You are protected from the next energy loss."));
+        rulesContent.getChildren().add(createRuleSection("5. STATUS EFFECTS", 
+            "- Frozen: You will skip your next turn.\n" +
+            "- Confused: Your role (SCARER/LAUGHER) is swapped temporarily!\n" +
+            "- Shielded: You are protected from the next energy loss."));
 
-        rulesContent.getChildren().add(createRuleSection("⚡ 6. POWERUPS & ABILITIES", 
+        rulesContent.getChildren().add(createRuleSection("6. POWERUPS & ABILITIES", 
             "Spend 500 Energy to use your Powerup! Each monster has a unique passive:\n" +
             "- MultiTasker: Gets +200 Bonus on energy changes.\n" +
             "- Dasher: Travels double the distance of the dice roll.\n" +
@@ -335,8 +361,7 @@ public class StartMenu {
             }
             
             playVsCinematic(() -> {
-                app.getWindow().setScene(new GameBoard(app, player1Monster, player2Monster, isVsComputer).getScene());
-                app.getWindow().setFullScreen(true); 
+                new GameBoard(app, player1Monster, player2Monster, isVsComputer);
             });
         });
 
@@ -458,6 +483,19 @@ public class StartMenu {
         return btn;
     }
 
+    private void addHoverEffect(Button btn) {
+        btn.setOnMouseEntered(e -> {
+            btn.setOpacity(0.8);
+            ScaleTransition st = new ScaleTransition(Duration.millis(100), btn);
+            st.setToX(1.05); st.setToY(1.05); st.play();
+        });
+        btn.setOnMouseExited(e -> {
+            btn.setOpacity(1.0);
+            ScaleTransition st = new ScaleTransition(Duration.millis(100), btn);
+            st.setToX(1.0); st.setToY(1.0); st.play();
+        });
+    }
+
     private VBox createPlayerSelectionBox(String titleText, boolean isPlayer1) {
         VBox card = new VBox(15);
         card.setAlignment(Pos.TOP_CENTER);
@@ -492,7 +530,7 @@ public class StartMenu {
         passiveLabel.setTextAlignment(javafx.scene.text.TextAlignment.CENTER);
         passiveLabel.setMinHeight(40); 
 
-        Label energyLabel = new Label("Energy: 0 ⚡");
+        Label energyLabel = new Label("Energy: 0");
         energyLabel.setTextFill(Color.web("#f1c40f"));
         energyLabel.setFont(Font.font("System", FontWeight.BOLD, 18));
 
@@ -546,16 +584,16 @@ public class StartMenu {
 
                 nameLabel.setText(selected.getName().toUpperCase());
                 roleLabel.setText("Role: " + selected.getRole());
-                energyLabel.setText("Energy: " + selected.getEnergy() + " ⚡");
+                energyLabel.setText("Energy: " + selected.getEnergy());
 
                 if (selected instanceof game.engine.monsters.MultiTasker) {
-                    passiveLabel.setText("✨ MultiTasker: Gains +200 bonus on energy changes.");
+                    passiveLabel.setText("MultiTasker: Gains +200 bonus on energy changes.");
                 } else if (selected instanceof game.engine.monsters.Dasher) {
-                    passiveLabel.setText("💨 Dasher: Travels double the distance of dice roll.");
+                    passiveLabel.setText("Dasher: Travels double the distance of dice roll.");
                 } else if (selected instanceof game.engine.monsters.Dynamo) {
-                    passiveLabel.setText("💥 Dynamo: Multiplies all gained/lost energy by 2.");
+                    passiveLabel.setText("Dynamo: Multiplies all gained/lost energy by 2.");
                 } else if (selected instanceof game.engine.monsters.Schemer) {
-                    passiveLabel.setText("🧛 Schemer: Steals energy from the opponent.");
+                    passiveLabel.setText("Schemer: Steals energy from the opponent.");
                 } else {
                     passiveLabel.setText("");
                 }

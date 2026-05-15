@@ -107,10 +107,9 @@ public class GameBoard {
         topBar.setPadding(new Insets(15, 0, 0, 0));
 
         exitBtn = new Button("EXIT TO MENU");
-        exitBtn.setStyle("-fx-background-color: rgba(231, 76, 60, 0.8); -fx-text-fill: white; -fx-font-size: 16px; -fx-font-weight: bold; -fx-border-color: #c0392b; -fx-border-radius: 20; -fx-background-radius: 20; -fx-cursor: hand; -fx-padding: 5 20;");
+        exitBtn.setStyle("-fx-background-color: rgba(231, 76, 60, 0.8); -fx-text-fill: white; -fx-font-size: 16px; -fx-font-weight: bold; -fx-border-color: #c0392b; -fx-border-radius: 20; -fx-background-radius: 20; -fx-padding: 5 20;");
         exitBtn.setOnAction(e -> {
-            app.getWindow().setFullScreen(false);
-            app.getWindow().setScene(new StartMenu(app).getScene());
+            new StartMenu(app); 
         });
         addHoverEffect(exitBtn);
 
@@ -195,7 +194,10 @@ public class GameBoard {
         root.setBottom(bottomControlPanel);
 
         mainContainer.getChildren().add(root);
-        scene = new Scene(mainContainer, 1400, 850);
+        
+        
+        scene = app.getWindow().getScene();
+        scene.setRoot(mainContainer);
         
         try {
             Image cursorImg = new Image(getClass().getResourceAsStream("/assets/cursor.png"));
@@ -204,11 +206,12 @@ public class GameBoard {
 
         scene.setOnKeyPressed(e -> {
             if (isPaused && e.getCode() != KeyCode.ESCAPE) return; 
-            
+
             boolean p1Turn = game.getCurrent().getName().equals(game.getPlayer().getName());
             boolean p2Turn = !p1Turn;
             
             if (e.getCode() == KeyCode.ESCAPE) {
+                e.consume();
                 togglePause();
             } else if (e.getCode() == KeyCode.SPACE && p1Turn && !pRollBtn.isDisabled()) {
                 handleRoll();
@@ -453,7 +456,12 @@ public class GameBoard {
 
     private void flashCard(VBox card, Color flashColor) {
         String originalStyle = card.getStyle();
-        card.setStyle(originalStyle + "; -fx-background-color: " + flashColor.toString().replace("0x", "#") + "40;");
+        String rgba = String.format("rgba(%d, %d, %d, 0.4)",
+            (int)(flashColor.getRed() * 255),
+            (int)(flashColor.getGreen() * 255),
+            (int)(flashColor.getBlue() * 255));
+        
+        card.setStyle(originalStyle + "; -fx-background-color: " + rgba + ";");
         PauseTransition pt = new PauseTransition(Duration.millis(500));
         pt.setOnFinished(e -> card.setStyle(originalStyle));
         pt.play();
@@ -533,7 +541,7 @@ public class GameBoard {
 
     private void styleButton(Button btn, boolean isEnabled, String activeColor) {
         if (isEnabled) {
-            btn.setStyle("-fx-background-color: " + activeColor + "; -fx-text-fill: " + (activeColor.equals("#f1c40f") ? "#2c3e50" : "white") + "; -fx-font-weight: bold; -fx-font-size: 16px; -fx-padding: 10; -fx-background-radius: 8; -fx-cursor: hand;");
+            btn.setStyle("-fx-background-color: " + activeColor + "; -fx-text-fill: " + (activeColor.equals("#f1c40f") ? "#2c3e50" : "white") + "; -fx-font-weight: bold; -fx-font-size: 16px; -fx-padding: 10; -fx-background-radius: 8;");
         } else {
             btn.setStyle("-fx-background-color: #555555; -fx-text-fill: #888888; -fx-font-weight: bold; -fx-font-size: 16px; -fx-padding: 10; -fx-background-radius: 8;");
         }
@@ -667,12 +675,14 @@ public class GameBoard {
                     cellImageName = "card.png";
                     tooltipText = "Special Card Cell\nDraws a random card.";
                     
-                    ScaleTransition st = new ScaleTransition(Duration.seconds(1), b);
-                    st.setByX(0.05);
-                    st.setByY(0.05);
-                    st.setCycleCount(Animation.INDEFINITE);
-                    st.setAutoReverse(true);
-                    st.play();
+                    if (animatingMonster == null) {
+                        ScaleTransition st = new ScaleTransition(Duration.seconds(1), b);
+                        st.setByX(0.05);
+                        st.setByY(0.05);
+                        st.setCycleCount(Animation.INDEFINITE);
+                        st.setAutoReverse(true);
+                        st.play();
+                    }
                 }
                 else if (cell instanceof ContaminationSock) {
                     cellImageName = "sock.png";
@@ -715,9 +725,11 @@ public class GameBoard {
                     } else cellImageName = "monster_cell.png";
                 }
 
-                Tooltip t = new Tooltip(tooltipText);
-                t.setStyle("-fx-background-color: #1a1a2e; -fx-text-fill: white; -fx-font-size: 14px; -fx-font-weight: bold;");
-                Tooltip.install(b, t);
+                if (animatingMonster == null) {
+                    Tooltip t = new Tooltip(tooltipText);
+                    t.setStyle("-fx-background-color: #1a1a2e; -fx-text-fill: white; -fx-font-size: 14px; -fx-font-weight: bold;");
+                    Tooltip.install(b, t);
+                }
 
                 if (cellImageName != null && !(cell instanceof MonsterCell)) {
                     try {
@@ -854,7 +866,7 @@ public class GameBoard {
         msgLabel.setWrapText(true);
         
         Button okBtn = new Button("CONTINUE");
-        okBtn.setStyle("-fx-background-color: #45a29e; -fx-text-fill: #0b0c10; -fx-font-weight: bold; -fx-font-size: 16px; -fx-padding: 10 30; -fx-background-radius: 8; -fx-cursor: hand;");
+        okBtn.setStyle("-fx-background-color: #45a29e; -fx-text-fill: #0b0c10; -fx-font-weight: bold; -fx-font-size: 16px; -fx-padding: 10 30; -fx-background-radius: 8;");
         okBtn.setOnAction(e -> { rootContainer.getChildren().remove(overlay); if (onConfirm != null) onConfirm.run(); });
         
         dialog.getChildren().addAll(titleLabel, msgLabel, okBtn);
@@ -862,9 +874,6 @@ public class GameBoard {
         rootContainer.getChildren().add(overlay);
     }
 
-    // ==========================================================
-    // ----------------- (Frosted Glass Pause) ------------------
-    // ==========================================================
     private void togglePause() {
         StackPane rootContainer = (StackPane) scene.getRoot();
         BorderPane gameContent = (BorderPane) rootContainer.getChildren().get(0);
@@ -892,8 +901,7 @@ public class GameBoard {
 
             Button exitBtn = createCustomButton("EXIT TO MENU", "#e74c3c");
             exitBtn.setOnAction(e -> {
-                app.getWindow().setFullScreen(false);
-                app.getWindow().setScene(new StartMenu(app).getScene());
+                new StartMenu(app); 
             });
 
             menu.getChildren().addAll(head, resumeBtn, exitBtn);
@@ -924,9 +932,6 @@ public class GameBoard {
         return b;
     }
 
-    // ========================================================
-    // --------------- playVictoryCelebration -----------------
-    // ========================================================
     private void playVictoryCelebration(Monster winner) {
         StackPane rootContainer = (StackPane) scene.getRoot();
         
@@ -963,8 +968,7 @@ public class GameBoard {
         Button mainBtn = createCustomButton("RETURN TO MAIN MENU", "#66fcf1");
         mainBtn.setPrefSize(300, 50);
         mainBtn.setOnAction(e -> {
-            app.getWindow().setFullScreen(false);
-            app.getWindow().setScene(new StartMenu(app).getScene());
+            new StartMenu(app); 
         });
         
         VBox.setMargin(mainBtn, new Insets(40, 0, 0, 0));
