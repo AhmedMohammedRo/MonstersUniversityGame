@@ -143,7 +143,6 @@ public class Game {
     }
     
     private boolean checkWinCondition(Monster monster) {
-        // رجعنا الكود الأساسي بتاع الفوز عشان التيستات تنجح
         return monster.getPosition() == Constants.WINNING_POSITION && 
                monster.getEnergy() >= Constants.WINNING_ENERGY;
     }

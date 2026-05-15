@@ -1,58 +1,80 @@
 package game.gui;
 
+import game.engine.Board;
+import game.engine.Constants;
 import game.engine.Game;
 import game.engine.Role;
+import game.engine.cards.Card;
 import game.engine.cells.*;
 import game.engine.exceptions.InvalidMoveException;
 import game.engine.exceptions.OutOfEnergyException;
 import game.engine.monsters.Monster;
-import javafx.animation.KeyFrame;
-import javafx.animation.PauseTransition;
-import javafx.animation.Timeline;
+import javafx.animation.*;
 import javafx.application.Platform;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.control.Label;
+import javafx.scene.control.ProgressBar;
+import javafx.scene.control.ScrollPane;
+import javafx.scene.control.Tooltip;
+import javafx.scene.effect.ColorAdjust;
+import javafx.scene.effect.DropShadow;
+import javafx.scene.effect.GaussianBlur;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
-import javafx.scene.layout.BorderPane;
-import javafx.scene.layout.GridPane;
-import javafx.scene.layout.HBox;
-import javafx.scene.layout.StackPane;
-import javafx.scene.layout.VBox;
-import javafx.scene.media.AudioClip; 
+import javafx.scene.input.KeyCode;
+import javafx.scene.layout.*;
+import javafx.scene.paint.Color;
+import javafx.scene.shape.Circle;
+import javafx.scene.shape.Rectangle;
+import javafx.scene.text.Font;
+import javafx.scene.text.Text;
+import javafx.scene.text.TextFlow;
 import javafx.util.Duration;
+
+import java.util.Random;
 
 public class GameBoard {
 
     private Scene scene;
     private Game game;
     private GridPane grid;
-    private Label turnLabel;
-    private Label actionLogLabel; 
     private Main app;
     
-    private Button pRollBtn, pPowerBtn, oRollBtn, oPowerBtn, muteBtn, exitBtn;
+    private Button pRollBtn, pPowerBtn, oRollBtn, oPowerBtn, exitBtn;
     private ImageView pDiceView, oDiceView;
     
+    private VBox pCardBox, oCardBox;
     private ImageView pImageView, oImageView;
-    private Label pName, pEnergy, pPos;
-    private Label oName, oEnergy, oPos; 
+    private Label pName, pDesc, pEnergy, pPos;
+    private Label oName, oDesc, oEnergy, oPos; 
     private HBox pStatusBox, oStatusBox; 
+    private ProgressBar pEnergyBar, oEnergyBar;
+
+    private Pane raceTrackPane;
+    private Circle p1Marker;
+    private Circle p2Marker;
+
+    private ScrollPane consoleScroll;
+    private VBox consoleBox;
+    private TextFlow logTextFlow;
 
     private java.util.HashMap<String, Image> imageCache = new java.util.HashMap<>();
-    private javafx.scene.shape.Rectangle[] highlights = new javafx.scene.shape.Rectangle[100];
+    private Rectangle[] highlights = new Rectangle[100];
     private StackPane[] cellPanes = new StackPane[100]; 
     
     private Integer overrideCurrentMonsterPos = null;
     private Monster animatingMonster = null;
     
-    private boolean isMuted = false;
-    private final int POWERUP_COST = 10; 
-    
+    private final int POWERUP_COST = 500; 
     private boolean isVsComputer;
+    
+    private boolean isPaused = false;
+    private StackPane pauseOverlay;
+    private StackPane victoryOverlay;
+    private Random random = new Random();
 
     public GameBoard(Main app, Monster p1, Monster p2, boolean isVsComputer) {
         this.app = app;
@@ -84,15 +106,7 @@ public class GameBoard {
         topBar.setAlignment(Pos.CENTER);
         topBar.setPadding(new Insets(15, 0, 0, 0));
 
-        muteBtn = new Button("🔊");
-        muteBtn.setStyle("-fx-background-color: rgba(31, 40, 51, 0.8); -fx-text-fill: #66fcf1; -fx-font-size: 20px; -fx-border-color: #45a29e; -fx-border-radius: 50; -fx-background-radius: 50; -fx-cursor: hand;");
-        muteBtn.setOnAction(e -> {
-            isMuted = !isMuted;
-            muteBtn.setText(isMuted ? "🔇" : "🔊");
-        });
-        addHoverEffect(muteBtn);
-
-        exitBtn = new Button("🚪 EXIT TO MENU");
+        exitBtn = new Button("EXIT TO MENU");
         exitBtn.setStyle("-fx-background-color: rgba(231, 76, 60, 0.8); -fx-text-fill: white; -fx-font-size: 16px; -fx-font-weight: bold; -fx-border-color: #c0392b; -fx-border-radius: 20; -fx-background-radius: 20; -fx-cursor: hand; -fx-padding: 5 20;");
         exitBtn.setOnAction(e -> {
             app.getWindow().setFullScreen(false);
@@ -100,77 +114,118 @@ public class GameBoard {
         });
         addHoverEffect(exitBtn);
 
-        topBar.getChildren().addAll(muteBtn, exitBtn);
+        topBar.getChildren().addAll(exitBtn);
         root.setTop(topBar);
 
-        VBox playerSide = createPlayerCard("🟢 PLAYER 1", "#00b894", true);
+        pCardBox = createPlayerCard("PLAYER 1", "#00b894", true);
         pDiceView = new ImageView(getDiceImage(1));
         pDiceView.setFitWidth(80); pDiceView.setFitHeight(80);
-        pDiceView.setStyle("-fx-effect: dropshadow(three-pass-box, rgba(0, 184, 148, 0.8), 15, 0, 0, 0);");
         
-        pRollBtn = new Button("🎲 ROLL DICE");
+        pRollBtn = new Button("ROLL DICE");
         pRollBtn.setPrefWidth(200);
         addHoverEffect(pRollBtn); 
         
-        pPowerBtn = new Button("⚡ USE POWERUP");
+        pPowerBtn = new Button("USE POWERUP");
         pPowerBtn.setPrefWidth(200);
         addHoverEffect(pPowerBtn);
 
         pRollBtn.setOnAction(e -> handleRoll());
         pPowerBtn.setOnAction(e -> handlePowerup());
 
-        playerSide.getChildren().addAll(pDiceView, pRollBtn, pPowerBtn);
-        root.setLeft(playerSide);
-        BorderPane.setMargin(playerSide, new Insets(10, 10, 20, 20));
+        pCardBox.getChildren().addAll(pDiceView, pRollBtn, pPowerBtn);
+        root.setLeft(pCardBox);
+        BorderPane.setMargin(pCardBox, new Insets(10, 10, 20, 20));
 
-        String p2Title = isVsComputer ? "🤖 COMPUTER" : "🔴 PLAYER 2";
-        VBox opponentSide = createPlayerCard(p2Title, "#e84393", false);
+        String p2Title = isVsComputer ? "COMPUTER" : "PLAYER 2";
+        oCardBox = createPlayerCard(p2Title, "#e84393", false);
         oDiceView = new ImageView(getDiceImage(1));
         oDiceView.setFitWidth(80); oDiceView.setFitHeight(80);
-        oDiceView.setStyle("-fx-effect: dropshadow(three-pass-box, rgba(232, 67, 147, 0.8), 15, 0, 0, 0);");
         
-        oRollBtn = new Button("🎲 ROLL DICE");
+        oRollBtn = new Button("ROLL DICE");
         oRollBtn.setPrefWidth(200);
         addHoverEffect(oRollBtn); 
         
-        oPowerBtn = new Button("⚡ USE POWERUP");
+        oPowerBtn = new Button("USE POWERUP");
         oPowerBtn.setPrefWidth(200);
         addHoverEffect(oPowerBtn);
 
         oRollBtn.setOnAction(e -> handleRoll());
         oPowerBtn.setOnAction(e -> handlePowerup());
 
-        opponentSide.getChildren().add(oDiceView);
+        oCardBox.getChildren().add(oDiceView);
+        if (!isVsComputer) oCardBox.getChildren().addAll(oRollBtn, oPowerBtn);
         
-        if (!isVsComputer) {
-            opponentSide.getChildren().addAll(oRollBtn, oPowerBtn);
-        }
+        root.setRight(oCardBox);
+        BorderPane.setMargin(oCardBox, new Insets(10, 20, 20, 10));
+
+        raceTrackPane = new Pane();
+        raceTrackPane.setPrefSize(800, 20);
+        raceTrackPane.setMaxWidth(800);
+        raceTrackPane.setStyle("-fx-background-color: #0b0c10; -fx-border-color: #45a29e; -fx-border-radius: 10; -fx-background-radius: 10;");
         
-        root.setRight(opponentSide);
-        BorderPane.setMargin(opponentSide, new Insets(10, 20, 20, 10));
+        p1Marker = new Circle(8, Color.web("#00b894"));
+        p1Marker.setCenterY(10);
+        
+        p2Marker = new Circle(8, Color.web("#e84393"));
+        p2Marker.setCenterY(10);
+        
+        raceTrackPane.getChildren().addAll(p1Marker, p2Marker);
+
+        consoleBox = new VBox(5);
+        consoleBox.setPadding(new Insets(10));
+        consoleBox.setStyle("-fx-background-color: rgba(11, 12, 16, 0.8);");
+        logTextFlow = new TextFlow();
+        consoleBox.getChildren().add(logTextFlow);
+
+        consoleScroll = new ScrollPane(consoleBox);
+        consoleScroll.setPrefSize(800, 100); 
+        consoleScroll.setMaxWidth(800);
+        consoleScroll.setVbarPolicy(ScrollPane.ScrollBarPolicy.ALWAYS);
+        consoleScroll.setHbarPolicy(ScrollPane.ScrollBarPolicy.NEVER);
+        consoleScroll.setStyle("-fx-background: transparent; -fx-background-color: transparent; -fx-border-color: #45a29e; -fx-border-radius: 5;");
+        
+        consoleBox.heightProperty().addListener((observable, oldValue, newValue) -> consoleScroll.setVvalue(1.0));
 
         VBox bottomControlPanel = new VBox(15);
         bottomControlPanel.setAlignment(Pos.CENTER);
         bottomControlPanel.setPadding(new Insets(15));
         bottomControlPanel.setStyle("-fx-background-color: rgba(31, 40, 51, 0.9); -fx-border-color: #45a29e; -fx-border-width: 4px 0 0 0;");
 
-        turnLabel = new Label();
-        turnLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 26px; -fx-text-fill: #66fcf1; -fx-effect: dropshadow(three-pass-box, rgba(102, 252, 241, 0.6), 10, 0, 0, 0);");
-
-        actionLogLabel = new Label("Game Started! " + game.getCurrent().getName() + " turns first.");
-        actionLogLabel.setStyle("-fx-font-size: 18px; -fx-text-fill: #f1c40f; -fx-font-style: italic; -fx-background-color: rgba(0,0,0,0.5); -fx-padding: 5 20; -fx-background-radius: 10;");
-
-        bottomControlPanel.getChildren().addAll(turnLabel, actionLogLabel);
+        bottomControlPanel.getChildren().addAll(raceTrackPane, consoleScroll);
         root.setBottom(bottomControlPanel);
 
         mainContainer.getChildren().add(root);
         scene = new Scene(mainContainer, 1400, 850);
         
+        try {
+            Image cursorImg = new Image(getClass().getResourceAsStream("/assets/cursor.png"));
+            scene.setCursor(new javafx.scene.ImageCursor(cursorImg));
+        } catch (Exception e) { System.out.println("Cursor asset not found."); }
+
+        scene.setOnKeyPressed(e -> {
+            if (isPaused && e.getCode() != KeyCode.ESCAPE) return; 
+            
+            boolean p1Turn = game.getCurrent().getName().equals(game.getPlayer().getName());
+            boolean p2Turn = !p1Turn;
+            
+            if (e.getCode() == KeyCode.ESCAPE) {
+                togglePause();
+            } else if (e.getCode() == KeyCode.SPACE && p1Turn && !pRollBtn.isDisabled()) {
+                handleRoll();
+            } else if (e.getCode() == KeyCode.P && p1Turn && !pPowerBtn.isDisabled()) {
+                handlePowerup();
+            } else if (e.getCode() == KeyCode.ENTER && p2Turn && !isVsComputer && !oRollBtn.isDisabled()) {
+                handleRoll();
+            } else if (e.getCode() == KeyCode.L && p2Turn && !isVsComputer && !oPowerBtn.isDisabled()) {
+                handlePowerup();
+            }
+        });
+        
         Platform.runLater(() -> {
-            app.getWindow().setFullScreenExitHint(""); 
             app.getWindow().setFullScreen(true);
         });
         
+        appendToConsole("System", "Game Started! " + game.getCurrent().getName() + " turns first.", "#f1c40f");
         update();
     }
 
@@ -187,17 +242,22 @@ public class GameBoard {
         return imageCache.get(dName);
     }
 
-    private void playSound(String fileName) {
-        if (isMuted) return; 
-        try {
-            String path = getClass().getResource("/assets/" + fileName).toExternalForm();
-            AudioClip clip = new AudioClip(path);
-            clip.play();
-        } catch (Exception e) {}
-    }
+    private void appendToConsole(String source, String message, String colorHex) {
+        Text time = new Text(java.time.LocalTime.now().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss")) + " ");
+        time.setFill(Color.GRAY);
+        time.setStyle("-fx-font-family: monospace; -fx-font-size: 12px;");
 
-    private void logAction(String message) {
-        actionLogLabel.setText(">> " + message + " <<");
+        Text src = new Text("[" + source + "] ");
+        src.setFill(Color.web(colorHex));
+        src.setStyle("-fx-font-weight: bold; -fx-font-family: monospace; -fx-font-size: 13px;");
+
+        Text msg = new Text(message + "\n");
+        msg.setFill(Color.WHITE);
+        msg.setStyle("-fx-font-family: monospace; -fx-font-size: 13px;");
+
+        Platform.runLater(() -> {
+            logTextFlow.getChildren().addAll(time, src, msg);
+        });
     }
 
     private VBox createPlayerCard(String title, String colorHex, boolean isPlayer) {
@@ -211,30 +271,38 @@ public class GameBoard {
         titleLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 20px; -fx-text-fill: " + colorHex + ";");
 
         ImageView imageView = new ImageView();
-        imageView.setFitWidth(120);
-        imageView.setFitHeight(120);
+        imageView.setFitWidth(120); imageView.setFitHeight(120);
         imageView.setStyle("-fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.8), 15, 0, 0, 5);");
-        
         if (isPlayer) pImageView = imageView; else oImageView = imageView;
 
         Label nameLabel = new Label();
         nameLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 16px; -fx-text-fill: white; -fx-text-alignment: center;");
         if (isPlayer) pName = nameLabel; else oName = nameLabel;
 
+        Label descLabel = new Label();
+        descLabel.setStyle("-fx-font-size: 13px; -fx-text-fill: #bdc3c7; -fx-text-alignment: center;");
+        descLabel.setWrapText(true);
+        descLabel.setMaxWidth(260);
+        descLabel.setMinHeight(50);
+        if (isPlayer) pDesc = descLabel; else oDesc = descLabel;
+
         Label energyLabel = new Label();
         energyLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 20px; -fx-text-fill: #66fcf1;");
         if (isPlayer) pEnergy = energyLabel; else oEnergy = energyLabel;
+
+        ProgressBar energyBar = new ProgressBar(0);
+        energyBar.setPrefWidth(200); energyBar.setPrefHeight(15);
+        if (isPlayer) pEnergyBar = energyBar; else oEnergyBar = energyBar;
 
         Label posLabel = new Label();
         posLabel.setStyle("-fx-font-size: 14px; -fx-text-fill: #c5c6c7;");
         if (isPlayer) pPos = posLabel; else oPos = posLabel;
 
         HBox statusBox = new HBox(5);
-        statusBox.setAlignment(Pos.CENTER);
-        statusBox.setMinHeight(40);
+        statusBox.setAlignment(Pos.CENTER); statusBox.setMinHeight(40);
         if (isPlayer) pStatusBox = statusBox; else oStatusBox = statusBox;
 
-        card.getChildren().addAll(titleLabel, imageView, nameLabel, energyLabel, posLabel, statusBox);
+        card.getChildren().addAll(titleLabel, imageView, nameLabel, descLabel, energyBar, energyLabel, posLabel, statusBox);
         return card;
     }
 
@@ -248,16 +316,17 @@ public class GameBoard {
         Monster actingMonster = game.getCurrent();
         animatingMonster = actingMonster; 
         int startPos = actingMonster.getPosition();
+        int oldEnergy = actingMonster.getEnergy(); 
         boolean wasFrozen = actingMonster.isFrozen();
 
-        // قفل كل الزراير أثناء اللعب
+        String pColor = actingMonster.getName().equals(game.getPlayer().getName()) ? "#00b894" : "#e84393";
+
         pRollBtn.setDisable(true); pPowerBtn.setDisable(true);
         oRollBtn.setDisable(true); oPowerBtn.setDisable(true);
 
         if (wasFrozen) {
             try { game.playTurn(); } catch (Exception e) {}
-            playSound("freeze.wav");
-            logAction(actingMonster.getName() + " is FROZEN and skips their turn!");
+            appendToConsole(actingMonster.getName(), "Is FROZEN and skips their turn!", "#00cec9");
             showCustomPopup("Turn Skipped!", actingMonster.getName() + " was frozen and skipped this turn.", this::finishTurn);
             return;
         }
@@ -266,67 +335,131 @@ public class GameBoard {
             game.playTurn();
             int actualRoll = game.getLastRoll();
             int finalPos = actingMonster.getPosition();
+            int newEnergy = actingMonster.getEnergy();
+            int energyDiff = newEnergy - oldEnergy;
             
-            int tempIntermediate = finalPos; 
-            if (startPos != finalPos) {
-                for (int i = startPos + 1; i <= 99; i++) {
-                    Cell c = game.getBoard().getBoardCells()[i / 10][i % 10];
-                    if (c instanceof TransportCell) {
-                        if (i + ((TransportCell) c).getEffect() == finalPos) {
-                            tempIntermediate = i; 
-                            break;
-                        }
-                    }
-                }
+            appendToConsole(actingMonster.getName(), "Rolled a " + actualRoll, pColor);
+            
+            int expectedPosBeforeTransport = startPos;
+            
+            if(actingMonster instanceof game.engine.monsters.Dasher) {
+                 expectedPosBeforeTransport += actualRoll * 2;
+                 appendToConsole(actingMonster.getName(), "Dasher ability activated: Moving double (" + (actualRoll*2) + ") steps.", pColor);
+            } else if (actingMonster.isConfused() && actingMonster instanceof game.engine.monsters.Dasher) { 
+            } else {
+                 expectedPosBeforeTransport += actualRoll;
             }
 
-            final int intermediatePos = tempIntermediate;
+            int intermediatePos = expectedPosBeforeTransport % 100;
+            if(intermediatePos < 0) intermediatePos += 100;
+            
+            if (Math.abs(finalPos - intermediatePos) > 15) { 
+                intermediatePos = finalPos; 
+            }
+
+            final int animIntermediatePos = intermediatePos;
+
             ImageView activeDiceView = (actingMonster.getName().equals(game.getPlayer().getName())) ? pDiceView : oDiceView;
+            VBox activeCardBox = (actingMonster.getName().equals(game.getPlayer().getName())) ? pCardBox : oCardBox;
 
             showInlineDiceAnimation(activeDiceView, actualRoll, () -> {
-                logAction(actingMonster.getName() + " rolled a " + actualRoll + "!");
-
-                animateStepping(startPos, intermediatePos, () -> {
+                animateStepping(startPos, animIntermediatePos, () -> {
                     
-                    if (intermediatePos != finalPos) {
-                        if (finalPos < intermediatePos) {
-                            highlights[finalPos].setStroke(javafx.scene.paint.Color.web("#e74c3c"));
-                            playSound("error.wav"); 
-                            logAction("Oh no! " + actingMonster.getName() + " stepped on a Contamination Sock!");
-                        } else {
-                            highlights[finalPos].setStroke(javafx.scene.paint.Color.web("#f1c40f"));
-                            playSound("roll.wav"); 
-                            logAction("Awesome! " + actingMonster.getName() + " took a Conveyor Belt!");
+                    if (animIntermediatePos != finalPos) {
+                        Cell landedCell = game.getBoard().getBoardCells()[animIntermediatePos / 10][animIntermediatePos % 10];
+                        if(landedCell instanceof TransportCell) {
+                             appendToConsole("Board", actingMonster.getName() + " landed on a " + (landedCell instanceof ConveyorBelt ? "Conveyor Belt" : "Contamination Sock") + " and transports to " + finalPos, "#f1c40f");
                         }
                         
+                        highlights[finalPos].setStroke(finalPos < animIntermediatePos ? Color.web("#e74c3c") : Color.web("#f1c40f"));
                         highlights[finalPos].setVisible(true);
 
                         PauseTransition pause = new PauseTransition(Duration.seconds(1.2));
                         pause.setOnFinished(e -> {
                             highlights[finalPos].setVisible(false);
                             overrideCurrentMonsterPos = finalPos;
-                            playCellSoundAndLog(finalPos, actingMonster); 
                             drawBoard();
-                            finishTurn();
+                            processEndTurn(actingMonster, energyDiff, activeCardBox, finalPos);
                         });
                         pause.play();
                     } else {
-                        playCellSoundAndLog(finalPos, actingMonster);
-                        finishTurn();
+                        processEndTurn(actingMonster, energyDiff, activeCardBox, finalPos);
                     }
                 });
             });
 
         } catch (InvalidMoveException ex) {
-            showCustomPopup("Invalid Move", ex.getMessage(), this::finishTurn);
+            Monster defender = actingMonster.getName().equals(game.getPlayer().getName()) ? game.getOpponent() : game.getPlayer();
+            appendToConsole("System", "Invalid Move! " + actingMonster.getName() + " collided with " + defender.getName(), "#e74c3c");
+            showCustomPopup("Invalid Move", "Cell occupied by " + defender.getName() + "!", this::finishTurn);
         } catch (Throwable ex) {
             ex.printStackTrace();
+            appendToConsole("Error", ex.getMessage(), "#e74c3c");
             showCustomPopup("Logic Error", "Error: " + ex.getMessage(), this::finishTurn);
         }
     }
+    
+    private void processEndTurn(Monster actingMonster, int energyDiff, VBox activeCardBox, int finalPos) {
+        String pColor = actingMonster.getName().equals(game.getPlayer().getName()) ? "#00b894" : "#e84393";
+        
+        if (energyDiff != 0 && finalPos < 100 && cellPanes[finalPos] != null) {
+            showFloatingNumber(cellPanes[finalPos], energyDiff);
+        }
+
+        if (energyDiff > 0) {
+            flashCard(activeCardBox, Color.web("#00b894"));
+            appendToConsole(actingMonster.getName(), "Gained " + energyDiff + " Energy.", "#00b894");
+        } else if (energyDiff < 0) {
+            flashCard(activeCardBox, Color.web("#e74c3c"));
+            appendToConsole(actingMonster.getName(), "Lost " + Math.abs(energyDiff) + " Energy.", "#e74c3c");
+        }
+
+        for (int r = 0; r < 10; r++) {
+            for (int c = 0; c < 10; c++) {
+                Cell cell = game.getBoard().getBoardCells()[r][c];
+                if (cell instanceof CardCell) {
+                    Card drawnCard = ((CardCell) cell).getLastDrawnCard();
+                    if (drawnCard != null) {
+                        ((CardCell) cell).clearLastDrawnCard();
+                        appendToConsole("Card", actingMonster.getName() + " drew a card: " + drawnCard.getName() + " (" + drawnCard.getDescription() + ")", "#3498db");
+                        showCustomPopup("CARD DRAWN: " + drawnCard.getName(), 
+                            "Effect: " + drawnCard.getDescription(), this::finishTurn);
+                        return; 
+                    }
+                }
+            }
+        }
+        finishTurn();
+    }
+
+    private void showFloatingNumber(StackPane cellStack, int amount) {
+        Label floatLabel = new Label((amount > 0 ? "+" : "") + amount);
+        floatLabel.setStyle("-fx-font-size: 28px; -fx-font-weight: bold; -fx-text-fill: " + (amount > 0 ? "#00ff00" : "#ff3333") + "; -fx-effect: dropshadow(two-pass-box, black, 4, 1.0, 0, 0);");
+        
+        cellStack.getChildren().add(floatLabel);
+        
+        TranslateTransition tt = new TranslateTransition(Duration.seconds(1.5), floatLabel);
+        tt.setByY(-60); 
+        
+        FadeTransition ft = new FadeTransition(Duration.seconds(1.5), floatLabel);
+        ft.setFromValue(1.0);
+        ft.setToValue(0.0);
+        
+        tt.play();
+        ft.play();
+        
+        ft.setOnFinished(e -> cellStack.getChildren().remove(floatLabel));
+    }
+
+    private void flashCard(VBox card, Color flashColor) {
+        String originalStyle = card.getStyle();
+        card.setStyle(originalStyle + "; -fx-background-color: " + flashColor.toString().replace("0x", "#") + "40;");
+        PauseTransition pt = new PauseTransition(Duration.millis(500));
+        pt.setOnFinished(e -> card.setStyle(originalStyle));
+        pt.play();
+    }
 
     private void showInlineDiceAnimation(ImageView diceView, int actualRoll, Runnable onFinished) {
-        playSound("roll.wav"); 
         Timeline timeline = new Timeline();
         for (int i = 0; i < 15; i++) {
             timeline.getKeyFrames().add(new KeyFrame(Duration.millis(80 * i), e -> {
@@ -335,7 +468,7 @@ public class GameBoard {
         }
         timeline.getKeyFrames().add(new KeyFrame(Duration.millis(80 * 15), e -> {
             diceView.setImage(getDiceImage(actualRoll));
-            PauseTransition delay = new PauseTransition(Duration.seconds(1));
+            PauseTransition delay = new PauseTransition(Duration.seconds(0.5));
             delay.setOnFinished(event -> onFinished.run());
             delay.play();
         }));
@@ -345,10 +478,7 @@ public class GameBoard {
     private void animateStepping(int from, int to, Runnable onFinished) {
         Timeline timeline = new Timeline();
         int steps = to - from;
-        if (steps <= 0) {
-            onFinished.run();
-            return;
-        }
+        if (steps <= 0) { onFinished.run(); return; }
 
         for (int i = 1; i <= steps; i++) {
             int currentStep = from + i;
@@ -361,23 +491,6 @@ public class GameBoard {
         timeline.play();
     }
 
-    private void playCellSoundAndLog(int pos, Monster m) {
-        if (pos >= 100) return;
-        Cell cell = game.getBoard().getBoardCells()[pos / 10][pos % 10];
-        
-        if (cell instanceof DoorCell) {
-            playSound("door.wav");
-            logAction(m.getName() + " found a Door! Energy Updated.");
-        } else if (cell instanceof CardCell) {
-            playSound("card.wav");
-            logAction(m.getName() + " drew a Special Card!");
-        } else if (cell instanceof ContaminationSock) {
-            playSound("error.wav");
-        } else {
-            playSound("bonus.wav");
-        }
-    }
-
     private void finishTurn() {
         overrideCurrentMonsterPos = null; 
         animatingMonster = null; 
@@ -385,10 +498,9 @@ public class GameBoard {
         checkWinnerStatus();
 
         if (game.getWinner() == null) {
-            boolean isPlayer1Turn = game.getCurrent().getName().equals(game.getPlayer().getName());
-            
-            if (!isPlayer1Turn && isVsComputer) {
-                turnLabel.setText("▶ COMPUTER IS THINKING... ◀");
+            boolean isP1Turn = game.getCurrent().getName().equals(game.getPlayer().getName());
+            if (!isP1Turn && isVsComputer) {
+                appendToConsole("System", "Computer is calculating its move...", "#888888");
                 PauseTransition pause = new PauseTransition(Duration.seconds(1.5));
                 pause.setOnFinished(e -> handleRoll()); 
                 pause.play();
@@ -411,7 +523,7 @@ public class GameBoard {
 
         if (!isVsComputer) {
             oRollBtn.setDisable(!p2Turn);
-            styleButton(oRollBtn, p2Turn, "#e84393"); // لون الخصم وردي
+            styleButton(oRollBtn, p2Turn, "#e84393"); 
 
             boolean p2CanPower = p2Turn && game.getOpponent().getEnergy() >= POWERUP_COST;
             oPowerBtn.setDisable(!p2CanPower);
@@ -430,8 +542,8 @@ public class GameBoard {
     private void handlePowerup() {
         try {
             game.usePowerup();
-            playSound("powerup.wav"); 
-            logAction(game.getCurrent().getName() + " activated their POWERUP!");
+            String pColor = game.getCurrent().getName().equals(game.getPlayer().getName()) ? "#00b894" : "#e84393";
+            appendToConsole(game.getCurrent().getName(), "Activated Special Powerup!", pColor);
             showCustomPopup("Powerup Activated!", game.getCurrent().getName() + " used their special ability.", this::update);
         } catch (OutOfEnergyException ex) {
             showCustomPopup("Not Enough Energy", ex.getMessage(), null);
@@ -442,23 +554,33 @@ public class GameBoard {
 
     private void update() {
         drawBoard();
-        String currentTurnName = game.getCurrent().getName().toUpperCase();
         
-        if (isVsComputer && !game.getCurrent().getName().equals(game.getPlayer().getName())) {
-            turnLabel.setText("▶ COMPUTER IS THINKING... ◀");
-        } else {
-            turnLabel.setText("▶ CURRENT TURN: " + currentTurnName + " ◀");
-        }
+        int p1Score = game.getPlayer().getPosition() * 10 + game.getPlayer().getEnergy();
+        int p2Score = game.getOpponent().getPosition() * 10 + game.getOpponent().getEnergy();
         
-        updateCardData(game.getPlayer(), pImageView, pName, pEnergy, pPos, pStatusBox);
-        updateCardData(game.getOpponent(), oImageView, oName, oEnergy, oPos, oStatusBox);
+        String p1Title = (p1Score >= p2Score) ? "(LEAD) PLAYER 1" : "PLAYER 1";
+        String p2Title = isVsComputer ? "COMPUTER" : "PLAYER 2";
+        if (p2Score > p1Score) p2Title = "(LEAD) " + p2Title;
         
-        if (animatingMonster == null) {
-            updateControlsVisibility();
-        }
+        boolean p1Turn = game.getCurrent().getName().equals(game.getPlayer().getName());
+        
+        updateCardData(game.getPlayer(), pCardBox, pImageView, pName, pDesc, pEnergyBar, pEnergy, pPos, pStatusBox, p1Title, p1Turn, "#00b894");
+        updateCardData(game.getOpponent(), oCardBox, oImageView, oName, oDesc, oEnergyBar, oEnergy, oPos, oStatusBox, p2Title, !p1Turn, "#e84393");
+        
+        p1Marker.setCenterX(15 + (game.getPlayer().getPosition() / 99.0) * 770);
+        p2Marker.setCenterX(15 + (game.getOpponent().getPosition() / 99.0) * 770);
+        
+        if (animatingMonster == null) updateControlsVisibility();
     }
 
-    private void updateCardData(Monster m, ImageView iv, Label name, Label energy, Label pos, HBox statusBox) {
+    private void updateCardData(Monster m, VBox cardBox, ImageView iv, Label name, Label desc, ProgressBar bar, Label energy, Label pos, HBox statusBox, String crownTitle, boolean isTurn, String glowColor) {
+        
+        if (isTurn) {
+            cardBox.setEffect(new DropShadow(40, Color.web(glowColor)));
+        } else {
+            cardBox.setEffect(null);
+        }
+
         try {
             String imgName = m.getName() + ".png";
             Image img = imageCache.get("HD_" + imgName); 
@@ -469,9 +591,34 @@ public class GameBoard {
             iv.setImage(img);
         } catch (Exception e) {}
 
-        name.setText(m.getName() + "\n(" + m.getRole() + ")");
-        energy.setText("Energy: " + m.getEnergy() + " ⚡");
+        if (m.isConfused()) {
+            name.setText(crownTitle + "\n" + m.getName() + "\n(Role: " + m.getRole() + " - SWAPPED!)");
+            name.setTextFill(Color.web("#9b59b6")); 
+        } else {
+            name.setText(crownTitle + "\n" + m.getName() + " (" + m.getRole() + ")");
+            name.setTextFill(Color.WHITE);
+        }
+        
+        String passiveAbility = "";
+        if (m instanceof game.engine.monsters.MultiTasker) {
+            passiveAbility = "\n[ MultiTasker ] +200 Bonus on changes.";
+        } else if (m instanceof game.engine.monsters.Dasher) {
+            passiveAbility = "\n[ Dasher ] Moves double the dice roll.";
+        } else if (m instanceof game.engine.monsters.Dynamo) {
+            passiveAbility = "\n[ Dynamo ] Doubles all gains & losses.";
+        } else if (m instanceof game.engine.monsters.Schemer) {
+            passiveAbility = "\n[ Schemer ] Steals energy from rivals.";
+        }
+
+        desc.setText("*" + m.getDescription() + "*" + passiveAbility);
+        
+        energy.setText("Energy: " + m.getEnergy());
         pos.setText("Position: " + m.getPosition());
+
+        double fillProgress = Math.min(1.0, Math.max(0, m.getEnergy() / 1000.0));
+        bar.setProgress(fillProgress);
+        String barColor = m.getRole() == Role.SCARER ? "#e74c3c" : "#f1c40f";
+        bar.setStyle("-fx-accent: " + barColor + "; -fx-control-inner-background: #1a1a2e;");
 
         statusBox.getChildren().clear();
         if (m.isConfused()) statusBox.getChildren().add(createBadge("Confused (" + m.getConfusionTurns() + ")", "#9b59b6"));
@@ -487,16 +634,12 @@ public class GameBoard {
         int oDrawPos = game.getOpponent().getPosition();
 
         if (animatingMonster != null && overrideCurrentMonsterPos != null) {
-            if (animatingMonster.getName().equals(game.getPlayer().getName())) {
-                pDrawPos = overrideCurrentMonsterPos;
-            } else if (animatingMonster.getName().equals(game.getOpponent().getName())) {
-                oDrawPos = overrideCurrentMonsterPos;
-            }
+            if (animatingMonster.getName().equals(game.getPlayer().getName())) pDrawPos = overrideCurrentMonsterPos;
+            else if (animatingMonster.getName().equals(game.getOpponent().getName())) oDrawPos = overrideCurrentMonsterPos;
         }
 
         for (int r = 0; r < 10; r++) {
             for (int c = 0; c < 10; c++) {
-                
                 int index = (r % 2 == 0) ? (r * 10 + c) : (r * 10 + (9 - c));
                 int displayCol = c;
                 int displayRow = 9 - r; 
@@ -512,63 +655,108 @@ public class GameBoard {
                 String bgColor = isDark ? "rgba(31, 40, 51, 0.6)" : "rgba(11, 12, 16, 0.6)"; 
                 b.setStyle("-fx-background-color: " + bgColor + "; -fx-background-radius: 0;");
 
-                String cellImageName = null;
-                if (cell instanceof DoorCell) cellImageName = "door.png";
-                else if (cell instanceof CardCell) cellImageName = "card.png";
-                else if (cell instanceof ConveyorBelt) cellImageName = "conveyor.png";
-                else if (cell instanceof ContaminationSock) cellImageName = "sock.png";
-                else if (cell instanceof MonsterCell) cellImageName = "monster_cell.png";
+                String tooltipText = "Cell " + index + "\nType: Regular";
 
-                if (cellImageName != null) {
+                String cellImageName = null;
+                if (cell instanceof DoorCell) {
+                    cellImageName = "door.png";
+                    DoorCell dc = (DoorCell) cell;
+                    tooltipText = "Door Cell " + index + "\nRole: " + dc.getRole() + "\nEnergy: " + dc.getEnergy();
+                }
+                else if (cell instanceof CardCell) {
+                    cellImageName = "card.png";
+                    tooltipText = "Special Card Cell\nDraws a random card.";
+                    
+                    ScaleTransition st = new ScaleTransition(Duration.seconds(1), b);
+                    st.setByX(0.05);
+                    st.setByY(0.05);
+                    st.setCycleCount(Animation.INDEFINITE);
+                    st.setAutoReverse(true);
+                    st.play();
+                }
+                else if (cell instanceof ContaminationSock) {
+                    cellImageName = "sock.png";
+                    tooltipText = "Contamination Sock!\nPushes you backwards.";
+                }
+                else if (cell instanceof ConveyorBelt) {
+                    cellImageName = "conveyor.png";
+                    tooltipText = "Conveyor Belt\nPushes you " + ((TransportCell)cell).getEffect() + " steps forward.";
+                }
+                else if (cell instanceof MonsterCell) {
+                    Monster stationed = null;
+                    for (int i = 0; i < Constants.MONSTER_CELL_INDICES.length; i++) {
+                        if (index == Constants.MONSTER_CELL_INDICES[i] && i < Board.getStationedMonsters().size()) {
+                            stationed = Board.getStationedMonsters().get(i); break;
+                        }
+                    }
+                    if (stationed != null) {
+                        tooltipText = "Monster Cell\nStationed: " + stationed.getName() + "\nRole: " + stationed.getRole();
+                        try {
+                            String imgName = stationed.getName() + ".png";
+                            Image mImg = imageCache.get("cell_" + imgName);
+                            if (mImg == null) {
+                                mImg = new Image(getClass().getResourceAsStream("/assets/" + imgName), 100, 100, true, true);
+                                imageCache.put("cell_" + imgName, mImg);
+                            }
+                            ImageView mIcon = new ImageView(mImg);
+                            mIcon.setFitWidth(65); mIcon.setFitHeight(65);
+                            
+                            applyStatusAura(stationed, mIcon);
+
+                            b.setGraphic(mIcon);
+                            cellStack.getChildren().add(b);
+                            
+                            Label nameBadge = new Label(stationed.getName().split(" ")[0]); 
+                            nameBadge.setStyle("-fx-background-color: rgba(0,0,0,0.8); -fx-text-fill: white; -fx-font-size: 9px; -fx-font-weight: bold; -fx-padding: 2 4; -fx-background-radius: 3;");
+                            StackPane.setAlignment(nameBadge, Pos.BOTTOM_CENTER);
+                            StackPane.setMargin(nameBadge, new Insets(0, 0, 5, 0));
+                            cellStack.getChildren().add(nameBadge);
+                        } catch (Exception e) {}
+                    } else cellImageName = "monster_cell.png";
+                }
+
+                Tooltip t = new Tooltip(tooltipText);
+                t.setStyle("-fx-background-color: #1a1a2e; -fx-text-fill: white; -fx-font-size: 14px; -fx-font-weight: bold;");
+                Tooltip.install(b, t);
+
+                if (cellImageName != null && !(cell instanceof MonsterCell)) {
                     try {
                         Image cellImg = imageCache.get(cellImageName);
                         if (cellImg == null) {
                             cellImg = new Image(getClass().getResourceAsStream("/assets/" + cellImageName), 100, 100, true, true);
                             imageCache.put(cellImageName, cellImg);
                         }
-                        
                         ImageView cellIcon = new ImageView(cellImg);
-                        cellIcon.setFitWidth(65); 
-                        cellIcon.setFitHeight(65);
-                        cellIcon.setStyle("-fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.7), 8, 0, 0, 3);");
+                        cellIcon.setFitWidth(65); cellIcon.setFitHeight(65);
                         b.setGraphic(cellIcon);
                         cellStack.getChildren().add(b);
 
-                        if (cell instanceof DoorCell) {
+                        if (cell instanceof DoorCell && !((DoorCell)cell).isActivated()) {
                             DoorCell dc = (DoorCell) cell;
-                            if (dc.isActivated()) {
-                                cellIcon.setOpacity(0.3);
-                            } else {
-                                String roleColor = dc.getRole() == Role.SCARER ? "#e84393" : "#00b894";
-                                String roleLetter = dc.getRole() == Role.SCARER ? "S" : "L";
-                                Label doorBadge = new Label(roleLetter + " | " + dc.getEnergy());
-                                doorBadge.setStyle("-fx-background-color: " + roleColor + "; -fx-text-fill: white; -fx-font-size: 10px; -fx-font-weight: bold; -fx-padding: 2 4; -fx-background-radius: 4;");
-                                StackPane.setAlignment(doorBadge, Pos.BOTTOM_CENTER);
-                                StackPane.setMargin(doorBadge, new Insets(0, 0, 5, 0));
-                                cellStack.getChildren().add(doorBadge);
-                            }
+                            String roleColor = dc.getRole() == Role.SCARER ? "#e84393" : "#00b894";
+                            Label doorBadge = new Label((dc.getRole() == Role.SCARER ? "S" : "L") + " | " + dc.getEnergy());
+                            doorBadge.setStyle("-fx-background-color: " + roleColor + "; -fx-text-fill: white; -fx-font-size: 10px; -fx-font-weight: bold; -fx-padding: 2 4; -fx-background-radius: 4;");
+                            StackPane.setAlignment(doorBadge, Pos.BOTTOM_CENTER);
+                            StackPane.setMargin(doorBadge, new Insets(0, 0, 5, 0));
+                            cellStack.getChildren().add(doorBadge);
+                        } else if (cell instanceof DoorCell && ((DoorCell)cell).isActivated()) {
+                            cellIcon.setOpacity(0.3);
                         }
                         
                         if (cell instanceof TransportCell) {
                             int effect = ((TransportCell) cell).getEffect();
                             int dest = index + effect; 
-                            
                             if (dest >= 0 && dest < 100 && effect != 0) {
-                                String dir = effect > 0 ? "⬆" : "⬇";
-                                String badgeColor = effect > 0 ? "#00b894" : "#e74c3c"; 
-                                
-                                Label beltBadge = new Label(dir + " To " + dest);
-                                beltBadge.setStyle("-fx-background-color: " + badgeColor + "; -fx-text-fill: white; -fx-font-size: 10px; -fx-font-weight: bold; -fx-padding: 2 4; -fx-background-radius: 4;");
+                                String dir = effect > 0 ? "To " : "To ";
+                                Label beltBadge = new Label(dir + dest);
+                                beltBadge.setStyle("-fx-background-color: " + (effect > 0 ? "#00b894" : "#e74c3c") + "; -fx-text-fill: white; -fx-font-size: 10px; -fx-font-weight: bold; -fx-padding: 2 4; -fx-background-radius: 4;");
                                 StackPane.setAlignment(beltBadge, Pos.BOTTOM_CENTER);
                                 StackPane.setMargin(beltBadge, new Insets(0, 0, 5, 0));
                                 cellStack.getChildren().add(beltBadge);
                             }
                         }
-
                     } catch (Exception e) {}
-                } else {
-                    cellStack.getChildren().add(b);
-                }
+                } else if (!(cell instanceof MonsterCell)) cellStack.getChildren().add(b);
 
                 Label numLabel = new Label(String.valueOf(index));
                 numLabel.setStyle("-fx-text-fill: rgba(255, 255, 255, 0.4); -fx-font-size: 11px; -fx-font-weight: bold;");
@@ -576,20 +764,15 @@ public class GameBoard {
                 StackPane.setMargin(numLabel, new Insets(2, 4, 0, 0));
                 cellStack.getChildren().add(numLabel);
 
-                javafx.scene.shape.Rectangle highlight = new javafx.scene.shape.Rectangle(75, 75);
-                highlight.setFill(javafx.scene.paint.Color.TRANSPARENT);
-                highlight.setStroke(javafx.scene.paint.Color.web("#f1c40f")); 
+                Rectangle highlight = new Rectangle(75, 75);
+                highlight.setFill(Color.TRANSPARENT);
                 highlight.setStrokeWidth(4);
                 highlight.setVisible(false); 
                 highlights[index] = highlight;
                 cellStack.getChildren().add(highlight);
 
-                if (pDrawPos == index) {
-                    addMonsterToCell(cellStack, game.getPlayer(), Pos.TOP_LEFT);
-                }
-                if (oDrawPos == index) {
-                    addMonsterToCell(cellStack, game.getOpponent(), Pos.BOTTOM_RIGHT);
-                }
+                if (pDrawPos == index) addMonsterToCell(cellStack, game.getPlayer(), Pos.TOP_LEFT);
+                if (oDrawPos == index) addMonsterToCell(cellStack, game.getOpponent(), Pos.BOTTOM_RIGHT);
 
                 grid.add(cellStack, displayCol, displayRow);
             }
@@ -604,37 +787,54 @@ public class GameBoard {
                 img = new Image(getClass().getResourceAsStream("/assets/" + imageName), 80, 80, true, true);
                 imageCache.put(imageName, img);
             }
-            
             ImageView iv = new ImageView(img);
-            iv.setFitWidth(45); 
-            iv.setFitHeight(45);
+            iv.setFitWidth(45); iv.setFitHeight(45);
             
-            boolean isCurrentTurn = monster.getName().equals(game.getCurrent().getName());
-            String shadowEffect = isCurrentTurn 
-                ? "-fx-effect: dropshadow(three-pass-box, rgba(102, 252, 241, 0.9), 15, 0.6, 0, 0);" 
-                : "-fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.8), 5, 0, 0, 0);"; 
+            applyStatusAura(monster, iv);
+
+            boolean isHisTurn = monster.getName().equals(game.getCurrent().getName());
+            boolean isP1 = monster.getName().equals(game.getPlayer().getName());
             
-            iv.setStyle(shadowEffect);
+            if (isHisTurn && animatingMonster == null) { 
+                iv.setEffect(new DropShadow(25, Color.web(isP1 ? "#00b894" : "#e84393")));
+                ScaleTransition st = new ScaleTransition(Duration.seconds(0.8), iv);
+                st.setFromX(1.0); st.setFromY(1.0); st.setToX(1.15); st.setToY(1.15);
+                st.setCycleCount(Animation.INDEFINITE); st.setAutoReverse(true); 
+                st.play();
+            }
             
             stack.getChildren().add(iv);
             StackPane.setAlignment(iv, position);
         } catch (Exception e) {}
     }
 
+    private void applyStatusAura(Monster monster, ImageView iv) {
+        if (monster.isFrozen()) {
+            ColorAdjust colorAdjust = new ColorAdjust();
+            colorAdjust.setHue(-0.5); colorAdjust.setBrightness(0.3); colorAdjust.setSaturation(-0.5);
+            iv.setEffect(colorAdjust);
+        } else if (monster.isShielded()) {
+            iv.setEffect(new DropShadow(15, Color.web("#3498db")));
+        } else if (monster.isConfused()) {
+            iv.setEffect(new DropShadow(15, Color.web("#9b59b6")));
+        } else {
+            iv.setEffect(new DropShadow(5, Color.BLACK));
+        }
+    }
+
     private void checkWinnerStatus() {
         Monster w = game.getWinner();
         if (w != null) {
-            playSound("win.wav"); 
-            showCustomPopup("🏆 MATCH FINISHED 🏆", w.getName() + " HAS WON THE GAME!\nFinal Energy: " + w.getEnergy(), () -> {
-                app.getWindow().setFullScreen(false);
-                app.getWindow().setScene(new StartMenu(app).getScene());
-            });
+            pRollBtn.setDisable(true); oRollBtn.setDisable(true);
+            pPowerBtn.setDisable(true); oPowerBtn.setDisable(true);
+            appendToConsole("GAME OVER", w.getName() + " HAS WON THE MATCH!", "#f1c40f");
+            
+            playVictoryCelebration(w);
         }
     }
 
     private void showCustomPopup(String title, String message, Runnable onConfirm) {
         StackPane rootContainer = (StackPane) scene.getRoot();
-        
         VBox overlay = new VBox();
         overlay.setAlignment(Pos.CENTER);
         overlay.setStyle("-fx-background-color: rgba(0, 0, 0, 0.7);");
@@ -645,26 +845,164 @@ public class GameBoard {
         dialog.setPadding(new Insets(30));
         dialog.setMaxWidth(450);
         dialog.setMaxHeight(250);
-        dialog.setStyle("-fx-background-color: #1a1a2e; -fx-border-color: #45a29e; -fx-border-width: 3px; -fx-border-radius: 15; -fx-background-radius: 15; -fx-effect: dropshadow(three-pass-box, rgba(0,0,0,0.8), 20, 0, 0, 0);");
+        dialog.setStyle("-fx-background-color: #1a1a2e; -fx-border-color: #45a29e; -fx-border-width: 3px; -fx-border-radius: 15; -fx-background-radius: 15;");
         
         Label titleLabel = new Label(title);
         titleLabel.setStyle("-fx-font-weight: bold; -fx-font-size: 24px; -fx-text-fill: " + (title.contains("Error") || title.contains("Invalid") ? "#e74c3c" : "#66fcf1") + ";");
-        
         Label msgLabel = new Label(message);
         msgLabel.setStyle("-fx-font-size: 18px; -fx-text-fill: white; -fx-text-alignment: center;");
         msgLabel.setWrapText(true);
         
         Button okBtn = new Button("CONTINUE");
         okBtn.setStyle("-fx-background-color: #45a29e; -fx-text-fill: #0b0c10; -fx-font-weight: bold; -fx-font-size: 16px; -fx-padding: 10 30; -fx-background-radius: 8; -fx-cursor: hand;");
-        okBtn.setOnAction(e -> {
-            rootContainer.getChildren().remove(overlay); 
-            if (onConfirm != null) onConfirm.run(); 
-        });
+        okBtn.setOnAction(e -> { rootContainer.getChildren().remove(overlay); if (onConfirm != null) onConfirm.run(); });
         
         dialog.getChildren().addAll(titleLabel, msgLabel, okBtn);
         overlay.getChildren().add(dialog);
-        
         rootContainer.getChildren().add(overlay);
+    }
+
+    // ==========================================================
+    // ----------------- (Frosted Glass Pause) ------------------
+    // ==========================================================
+    private void togglePause() {
+        StackPane rootContainer = (StackPane) scene.getRoot();
+        BorderPane gameContent = (BorderPane) rootContainer.getChildren().get(0);
+
+        if (!isPaused) {
+            isPaused = true;
+            
+            GaussianBlur blur = new GaussianBlur(15);
+            gameContent.setEffect(blur);
+
+            pauseOverlay = new StackPane();
+            pauseOverlay.setStyle("-fx-background-color: rgba(10, 10, 20, 0.7);"); 
+
+            VBox menu = new VBox(25);
+            menu.setAlignment(Pos.CENTER);
+            menu.setPadding(new Insets(40));
+            menu.setMaxSize(400, 300);
+            menu.setStyle("-fx-background-color: rgba(31, 40, 51, 0.9); -fx-border-color: #66fcf1; -fx-border-width: 3; -fx-border-radius: 15; -fx-background-radius: 15;");
+
+            Label head = new Label("GAME PAUSED");
+            head.setStyle("-fx-font-size: 32px; -fx-font-weight: bold; -fx-text-fill: white; -fx-effect: dropshadow(three-pass-box, #66fcf1, 10, 0, 0, 0);");
+
+            Button resumeBtn = createCustomButton("RESUME (ESC)", "#66fcf1");
+            resumeBtn.setOnAction(e -> togglePause());
+
+            Button exitBtn = createCustomButton("EXIT TO MENU", "#e74c3c");
+            exitBtn.setOnAction(e -> {
+                app.getWindow().setFullScreen(false);
+                app.getWindow().setScene(new StartMenu(app).getScene());
+            });
+
+            menu.getChildren().addAll(head, resumeBtn, exitBtn);
+            pauseOverlay.getChildren().add(menu);
+            
+            pauseOverlay.setOpacity(0);
+            rootContainer.getChildren().add(pauseOverlay);
+            FadeTransition ft = new FadeTransition(Duration.millis(300), pauseOverlay);
+            ft.setToValue(1); ft.play();
+
+        } else {
+            isPaused = false;
+            gameContent.setEffect(null); 
+            
+            FadeTransition fade = new FadeTransition(Duration.millis(200), pauseOverlay);
+            fade.setToValue(0);
+            fade.setOnFinished(e -> rootContainer.getChildren().remove(pauseOverlay));
+            fade.play();
+        }
+    }
+
+    private Button createCustomButton(String text, String color) {
+        Button b = new Button(text);
+        b.setPrefWidth(250);
+        b.setStyle("-fx-background-color: transparent; -fx-border-color: "+color+"; -fx-text-fill: "+color+"; -fx-font-size: 16px; -fx-font-weight: bold; -fx-border-radius: 5;");
+        b.setOnMouseEntered(e -> b.setStyle("-fx-background-color: "+color+"; -fx-text-fill: black; -fx-font-size: 16px; -fx-font-weight: bold; -fx-border-radius: 5;"));
+        b.setOnMouseExited(e -> b.setStyle("-fx-background-color: transparent; -fx-border-color: "+color+"; -fx-text-fill: "+color+"; -fx-font-size: 16px; -fx-font-weight: bold; -fx-border-radius: 5;"));
+        return b;
+    }
+
+    // ========================================================
+    // --------------- playVictoryCelebration -----------------
+    // ========================================================
+    private void playVictoryCelebration(Monster winner) {
+        StackPane rootContainer = (StackPane) scene.getRoot();
+        
+        rootContainer.getChildren().get(0).setEffect(new GaussianBlur(25));
+        
+        victoryOverlay = new StackPane();
+        victoryOverlay.setStyle("-fx-background-color: rgba(0, 0, 0, 0.8);");
+        rootContainer.getChildren().add(victoryOverlay);
+
+        VBox winnerContent = new VBox(20);
+        winnerContent.setAlignment(Pos.CENTER);
+
+        Label trophy = new Label("🏆");
+        trophy.setFont(Font.font(100));
+
+        Label head = new Label("THE WINNER IS");
+        head.setStyle("-fx-font-size: 24px; -fx-text-fill: white; -fx-font-weight: bold;");
+
+        ImageView iv = new ImageView();
+        try {
+            iv.setImage(new Image(getClass().getResourceAsStream("/assets/"+winner.getName()+".png")));
+        } catch(Exception e){}
+        iv.setFitHeight(300); iv.setFitWidth(300); iv.setPreserveRatio(true);
+        iv.setStyle("-fx-effect: dropshadow(three-pass-box, #f1c40f, 40, 0.8, 0, 0);");
+
+        Label name = new Label(winner.getName().toUpperCase());
+        name.setStyle("-fx-font-size: 48px; -fx-text-fill: #f1c40f; -fx-font-weight: bold; -fx-effect: dropshadow(one-pass-box, black, 5, 5, 0, 0);");
+
+        Label finalScores = new Label("FINAL SCORES:\n" + 
+            game.getPlayer().getName() + " Energy: " + game.getPlayer().getEnergy() + "\n" +
+            game.getOpponent().getName() + " Energy: " + game.getOpponent().getEnergy());
+        finalScores.setStyle("-fx-font-size: 20px; -fx-text-fill: white; -fx-text-alignment: center; -fx-background-color: rgba(255,255,255,0.1); -fx-padding: 10; -fx-background-radius: 10;");
+
+        Button mainBtn = createCustomButton("RETURN TO MAIN MENU", "#66fcf1");
+        mainBtn.setPrefSize(300, 50);
+        mainBtn.setOnAction(e -> {
+            app.getWindow().setFullScreen(false);
+            app.getWindow().setScene(new StartMenu(app).getScene());
+        });
+        
+        VBox.setMargin(mainBtn, new Insets(40, 0, 0, 0));
+
+        winnerContent.getChildren().addAll(trophy, head, iv, name, finalScores, mainBtn);
+        victoryOverlay.getChildren().add(winnerContent);
+
+        winnerContent.setScaleX(0); winnerContent.setScaleY(0);
+        ScaleTransition st = new ScaleTransition(Duration.seconds(1), winnerContent);
+        st.setToX(1.0); st.setToY(1.0);
+        st.setOnFinished(e -> spawnConfetti()); 
+        st.play();
+    }
+
+    private void spawnConfetti() {
+        Color[] colors = {Color.RED, Color.YELLOW, Color.GREEN, Color.BLUE, Color.PINK, Color.ORANGE};
+        
+        for (int i = 0; i < 150; i++) {
+            Rectangle c = new Rectangle(
+                random.nextInt(10)+5, random.nextInt(5)+2, 
+                colors[random.nextInt(colors.length)]
+            );
+            
+            c.setTranslateX(random.nextInt(1400) - 700); 
+            c.setTranslateY(-500); 
+            c.setRotate(random.nextInt(360));
+
+            victoryOverlay.getChildren().add(0, c); 
+
+            TranslateTransition fall = new TranslateTransition(Duration.seconds(random.nextDouble() * 2 + 3), c);
+            fall.setToY(600);
+            
+            RotateTransition rot = new RotateTransition(Duration.seconds(1), c);
+            rot.setByAngle(random.nextInt(360) + 360);
+            rot.setCycleCount(Animation.INDEFINITE);
+            
+            new ParallelTransition(fall, rot).play();
+        }
     }
 
     public Scene getScene() { return scene; }
