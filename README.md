@@ -53,13 +53,10 @@ The project follows a strict separation of concerns to ensure maintainability, s
 
 This project was brought to life by an incredible team of developers. A huge thanks to all contributors for their hard work and dedication:
 
-| Name | GitHub |
-|---|---|
-| Ahmed Roshdy | [@AhmedMohammedRo](https://github.com/AhmedMohammedRo) |
-| Omar Shaker | [@Omar-Shaker-Elbana](https://github.com/Omar-Shaker-Elbana) |
-| Mark Fahim | [@mark1234720](https://github.com/mark1234720) |
-| Karl Hany | [@karlhany222-spec](https://github.com/karlhany222-spec) |
-
+* **Ahmed** - [@AhmedMohammedRo](https://github.com/AhmedMohammedRo)
+* **Omar Shaker**
+* **Mark Tamer**
+* **Karl**
 
 <br>
 <p align="center"><i>Developed as a milestone project for academic coursework - May 2026</i></p>
